@@ -1,0 +1,3 @@
+[submodule "miscere"]
+	path = miscere
+	url = git@github.com:libry-inc/miscere.git
