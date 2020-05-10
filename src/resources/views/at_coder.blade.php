@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PHP Testing Tool for AtCoder</title>
-    <link rel="stylesheet" href="{{ url('/lib/codemirror/codemirror.css') }}">
+    <link rel="stylesheet" href="{{url('/lib/codemirror/codemirror.css')}}">
     <style>
         html, body {
             margin: 0;
@@ -13,12 +13,16 @@
             background: #ddd;
             overflow: hidden;
         }
+        button {
+            border-radius: 6px;
+            line-height: 1.5em;
+        }
         .grid {
             display: grid;
-            grid-template: "main-header sub-header" 30px "main sub" 1fr / min-content 1fr;
+            grid-template: "header header" 30px "main sub" 1fr / min-content 1fr;
         }
-        .grid-main-header {
-            grid-area: main-header;
+        .grid-header {
+            grid-area: header;
             border-bottom: 1px solid #aaa;
             padding-left: 3px;
             overflow: hidden;
@@ -27,20 +31,17 @@
             grid-area: main;
             min-width: 300px;
             max-width: calc(100vw - 300px);
+            width: 50vw;
             overflow: auto;
             resize: horizontal;
-        }
-        .grid-sub-header {
-            grid-area: sub-header;
-            border-left: 1px solid #aaa;
-            border-bottom: 1px solid #aaa;
-            padding-left: 3px;
-            overflow: hidden;
         }
         .grid-sub {
             grid-area: sub;
             border-left: 1px solid #aaa;
             overflow: auto;
+        }
+        .inline-box {
+            display: inline-block;
         }
         .box-label {
             position: relative;
@@ -61,9 +62,14 @@
         .box-label.app-close::before {
             transform: rotate(-90deg);
         }
+        .hidden-label {
+            display: block;
+            height: 1px;
+            overflow: hidden;
+        }
         .box {
             transition: all 200ms ease;
-            min-height: 40px;
+            min-height: 30px;
             overflow: hidden;
         }
         .box-label.app-close+.box {
@@ -74,19 +80,25 @@
             height: 300px;
             resize: vertical;
         }
+        .delete-button {
+            z-index: 1;
+            position: absolute;
+            right: 5px;
+        }
         .result {
             box-sizing: border-box;
             width: 100%;
             resize: vertical;
             background: #def;
         }
+        .result.passed {
+            background: #bfd;
+        }
+        .result.failed {
+            background: #fdd;
+        }
         .check-label {
             display: block;
-        }
-        #copySubmitCode {
-            position: absolute;
-            left: 125px;
-            margin-top: 8px;
         }
         .loading {
             position: relative;
@@ -156,63 +168,64 @@
     </style>
 </head>
 <body class="grid">
-<div class="grid-main-header">
-    <small>⌘+S : Run test cases and create a submit code.</small>
+<div class="grid-header">
+    <div class="inline-box"><button type="button" id="saveCodes">Save codes (⌘+S)</button></div>
+    <div class="inline-box"><button type="button" id="addTestCase">Add a test case</button></div>
+    <div class="inline-box"><button type="button" id="runTestCases">Run test cases (⌘+R)</button></div>
 </div>
 <div class="grid-main">
-    <div class="code">
-        <label class="box-label" for="mainEditor">Main Code</label>
-        <div class="box editor-box">
-            <textarea id="mainEditor">{{ file_get_contents(resource_path('assets/php/main_editor.php')) }}</textarea>
-        </div>
-        <label class="box-label" for="devEditor">Additional Code for Self-Check</label>
-        <div class="box editor-box">
-            <textarea id="devEditor">{{ file_get_contents(resource_path('assets/php/dev_editor.php')) }}</textarea>
-        </div>
-        <label class="box-label" for="prdEditor">Additional Code for Submit</label>
-        <div class="box editor-box">
-            <textarea id="prdEditor">{{ file_get_contents(resource_path('assets/php/prd_editor.php')) }}</textarea>
-        </div>
-        <hr>
-        <button type="button" id="copySubmitCode">copy</button>
-        <label class="box-label" for="submitCode">Submit Code</label>
-        <div class="box">
-            <textarea class="result" id="submitCode" readonly></textarea>
-        </div>
+    <div class="box"><button type="button" id="copySubmitCode">Copy a submit code to the clipboard</button></div>
+    <label class="box-label" for="mainEditor">Main Code</label>
+    <div class="box editor-box">
+        <textarea id="mainEditor">{{file_get_contents(resource_path('assets/php/main_editor.php'))}}</textarea>
     </div>
-</div>
-<div class="grid-sub-header">
-    <button type="button" id="addTestCase">Add a test case</button>
+    <label class="box-label" for="devEditor">Additional Code for Self-Check</label>
+    <div class="box editor-box">
+        <textarea id="devEditor">{{file_get_contents(resource_path('assets/php/dev_editor.php'))}}</textarea>
+    </div>
+    <label class="box-label" for="prdEditor">Additional Code for Submit</label>
+    <div class="box editor-box">
+        <textarea id="prdEditor">{{file_get_contents(resource_path('assets/php/prd_editor.php'))}}</textarea>
+    </div>
+    <label class="hidden-label" for="submitCode"><textarea class="result" id="submitCode" readonly></textarea></label>
 </div>
 <div id="testCaseBox" class="grid-sub">
-    <label class="check-label"><input type="checkbox" id="bailOut" checked><small>Stop immediately if one test case fails.</small></label>
-    <label class="check-label"><input type="checkbox" id="onlyFail" checked><small>Run the only failed test cases.</small></label>
+    <div>
+        <label class="box-label app-close" for="testCases">Test Cases</label>
+        <div id="testCases">
+            <label class="check-label"><input type="checkbox" id="bailOut" checked><small>Stop immediately if one test case fails.</small></label>
+            <label class="check-label"><input type="checkbox" id="onlyFail" checked><small>Run the only failed test cases.</small></label>
+            <label class="check-label">Time Limit: <input type="number" id="timeLimit" min="1" max="60" value="2"><small>seconds</small></label>
+            <label class="check-label">Memory Limit: <input type="number" id="memoryLimit" min="1" max="512" value="256"><small>MB</small></label>
+        </div>
+    </div>
     {{-- dummy --}}
     <div style="display: none;" class="loading">
         <div class="loading-filter"><div class="loading-position"><div class="loading-animation"></div></div></div>
+        <button class="delete-button">−</button>
         <label class="box-label app-close" for="testCaseEditor0">Test Case 0</label>
         <div class="box editor-box">
             <textarea id="testCaseEditor0"></textarea>
         </div>
         <label class="box-label" for="result0">Test Result 0</label>
         <div class="box">
-            <textarea class="result" id="result0" readonly></textarea>
+            <textarea class="result passed failed" id="result0" readonly></textarea>
         </div>
     </div>
 </div>
-<script src="{{ url('/lib/codemirror/codemirror.js') }}"></script>
-<script src="{{ url('/lib/codemirror/php.js') }}"></script>
-<script src="{{ url('/lib/codemirror/clike.js') }}"></script>
-<script src="{{ url('/lib/codemirror/css.js') }}"></script>
-<script src="{{ url('/lib/codemirror/htmlmixed.js') }}"></script>
-<script src="{{ url('/lib/codemirror/javascript.js') }}"></script>
-<script src="{{ url('/lib/codemirror/xml.js') }}"></script>
+<script src="{{url('/lib/codemirror/codemirror.js')}}"></script>
+<script src="{{url('/lib/codemirror/php.js')}}"></script>
+<script src="{{url('/lib/codemirror/clike.js')}}"></script>
+<script src="{{url('/lib/codemirror/css.js')}}"></script>
+<script src="{{url('/lib/codemirror/htmlmixed.js')}}"></script>
+<script src="{{url('/lib/codemirror/javascript.js')}}"></script>
+<script src="{{url('/lib/codemirror/xml.js')}}"></script>
 <script>
 "use strict";
 
 const headers = {
     "X-Requested-With": "XMLHttpRequest",
-    "X-CSRF-TOKEN": "{{ csrf_token() }}",
+    "X-CSRF-TOKEN": "{{csrf_token()}}",
     "Content-Type": "application/json; charset=utf-8",
 };
 
@@ -221,18 +234,19 @@ function createEditor(id) {
         mode: "php",
         lineNumbers: true,
         indentUnit: 4,
-        extraKeys: {"Cmd-S": submit},
     });
 }
 
 function submit() {
-    const mainCode  = mainEditor.doc.getValue();
-    const devCode   = devEditor.doc.getValue();
-    const prdCode   = prdEditor.doc.getValue();
     const testCases = [];
-    const bailOut   = document.getElementById("bailOut").checked;
-    const onlyFail  = document.getElementById("onlyFail").checked;
-    let failedOnce  = false;
+    const mainCode = mainEditor.doc.getValue();
+    const devCode = devEditor.doc.getValue();
+    const prdCode = prdEditor.doc.getValue();
+    const bailOut = document.getElementById("bailOut").checked;
+    const onlyFail = document.getElementById("onlyFail").checked;
+    const timeLimit = +document.getElementById("timeLimit").value;
+    const memoryLimit = +document.getElementById("memoryLimit").value;
+    let failedOnce = false;
 
     for (const id in testCaseSet) {
         const testCase = testCaseSet[id];
@@ -246,18 +260,19 @@ function submit() {
         testCase.startLoading();
     }
 
-    document.getElementById("submitCode").value = prdCode + mainCode.slice(5);
-
-    runTestCodes().then(() => {
-        console.log("end", {
-            main_code: mainCode,
-            dev_code: devCode,
-            prd_code: prdCode,
-            test_codes: testCases.map(testCase => testCase.getCode()),
-            bail_out: bailOut,
-            only_fail: onlyFail,
+    runTestCodes()
+        .then(() => {
+            console.log("end", {
+                main_code: mainCode,
+                dev_code: devCode,
+                prd_code: prdCode,
+                test_codes: testCases.map(testCase => testCase.getCode()),
+                bail_out: bailOut,
+                only_fail: onlyFail,
+                time_limit: timeLimit,
+                memory_limit: memoryLimit,
+            });
         });
-    });
 
     function runTestCodes() {
         return next(0);
@@ -274,48 +289,47 @@ function submit() {
         }
 
         if (bailOut && failedOnce) {
-            testCase.setResult({
-                passed: false,
-                message: "stopped.",
-            });
+            testCase.setResult({passed: null, message: "stopped."});
             testCase.finishLoading();
 
             return next(i + 1);
         }
 
-        return executeSubmit(testCase).then(() => {
-            testCase.finishLoading();
+        return executeSubmit(testCase)
+            .then(() => {
+                testCase.finishLoading();
 
-            if (!testCase.passed) {
-                failedOnce = true;
-            }
+                if (!testCase.passed) {
+                    failedOnce = true;
+                }
 
-            return next(i + 1);
-        });
+                return next(i + 1);
+            });
     }
 
     function executeSubmit(testCase) {
-        return fetch("/", {
+        return fetch("/api/test-case", {
             method: "POST",
             headers: headers,
             body: JSON.stringify({
                 main_code: mainCode,
                 dev_code: devCode,
                 test_code: testCase.getCode(),
+                time_limit: timeLimit,
+                memory_limit: memoryLimit,
             }),
-        }).then(
-            response => response.json()
-        ).then(data => {
-            console.log(data);
+        })
+            .then(
+                response => response.json()
+            ).then(
+                data => ({passed: data.passed, message: data.message})
+            ).catch(error => {
+                console.error("failed to executeSubmit", error);
 
-            return {passed: false, message: "dummy message"};
-        }).catch(error => {
-            console.log(error);
-
-            return {passed: false, message: error};
-        }).then(
-            result => testCase.setResult(result)
-        );
+                return {passed: false, message: error};
+            }).then(
+                result => testCase.setResult(result)
+            );
     }
 }
 
@@ -351,13 +365,14 @@ class TestCase {
 
         element.insertAdjacentHTML("beforeend", `<hr>
 <div class="loading-filter"><div class="loading-position"><div class="loading-animation"></div></div></div>
-<label class="box-label" for="testCaseEditor${ id }">Test Case ${ id } (TODO: drop)</label>
+<button class="delete-button">−</button>
+<label class="box-label" for="testCaseEditor${id}">Test Case ${id}</label>
 <div class="box editor-box">
-    <textarea id="testCaseEditor${ id }">{{ file_get_contents(resource_path('assets/php/case_editor.php')) }}</textarea>
+    <textarea id="testCaseEditor${id}" readonly>{{file_get_contents(resource_path('assets/php/case_editor.php'))}}</textarea>
 </div>
-<label class="box-label" for="result${ id }">Test Result ${ id }</label>
+<label class="box-label" for="result${id}">Test Result ${id}</label>
 <div class="box">
-    <textarea class="result" id="result${ id }" readonly></textarea>
+    <textarea class="result" id="result${id}" readonly></textarea>
 </div>
 `
         );
@@ -369,7 +384,7 @@ class TestCase {
 
         this.id      = id;
         this.element = element;
-        this.editor  = createEditor(`testCaseEditor${ id }`);
+        this.editor  = createEditor(`testCaseEditor${id}`);
         this.passed  = false;
 
         testCaseSet[id] = this;
@@ -393,9 +408,16 @@ class TestCase {
     }
 
     setResult(result) {
-        this.passed = result.passed;
-        // TODO: 色付け
-        this.element.querySelector(".result").value = result.message;
+        const element = this.element.querySelector(".result");
+        element.value = result.message;
+        element.classList.remove("passed", "failed");
+        if (result.passed === true) {
+            element.classList.add("passed");
+        } else if (result.passed === false) {
+            element.classList.add("failed");
+        }
+
+        this.passed = result.passed || false;
     }
 
     drop() {
@@ -403,7 +425,10 @@ class TestCase {
         delete testCaseSet[this.id];
 
         this.editor.toTextArea();
+        this.editor  = null;
+
         this.element.remove();
+        this.element = null;
     }
 }
 
@@ -415,24 +440,57 @@ const prdEditor  = createEditor("prdEditor");
 document.querySelectorAll(".box-label").forEach(
     element => element.addEventListener("click", event => event.target.classList.toggle("app-close"), false)
 );
+
 document.querySelectorAll(".editor-box").forEach(
     element => resizeObserver.observe(element)
 );
+
 document.getElementById("addTestCase").addEventListener("click", TestCase.create, false);
 
+document.getElementById("runTestCases").addEventListener("click", submit, false);
+
 document.getElementById("copySubmitCode").addEventListener("click", () => {
+    document.getElementById("submitCode").value = prdEditor.doc.getValue() + mainEditor.doc.getValue().slice(5);
     document.getElementById("submitCode").select();
     document.execCommand("copy");
 }, false);
 
-window.addEventListener("keydown", event => {
-    // press Cmd+S or Ctrl+S, then submit
-    if (event.keyCode === 83 && (event.metaKey || event.ctrlKey)) {
+document.addEventListener("keydown", event => {
+    if (event.metaKey || event.ctrlKey) {
+        switch (event.keyCode) {
+            case 82: // R
+                submit();
+
+                break;
+            case 83: // S
+                // save();
+                console.log("save");
+
+                break;
+            default:
+
+                return;
+        }
+
         event.preventDefault();
-        submit();
+        event.stopPropagation();
+
+        return false;
     }
 }, false);
+
+window.addEventListener("beforeunload", event => {
+    event.returnValue = "";
+}, false);
+
+TestCase.create();
 
 </script>
 </body>
 </html>
+{{--
+TODO: delete (-)
+TODO: add (+)
+TODO: failed/changed test cases
+TODO: save & load codes
+--}}

@@ -13,4 +13,5 @@ class AtCoderStream
     }
 }
 
+// export
 $stream = new AtCoderStream();

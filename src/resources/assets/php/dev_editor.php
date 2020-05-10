@@ -7,15 +7,18 @@ class AtCoderStream
 {
     private $inputs;
     private $outputs;
+    private $expected;
 
     /**
      * AtCoderStream constructor.
      * @param array $inputs
+     * @param string $expected
      */
-    public function __construct(array $inputs)
+    public function __construct(array $inputs, string $expected)
     {
-        $this->inputs  = $inputs;
-        $this->outputs = [];
+        $this->inputs   = $inputs;
+        $this->outputs  = [];
+        $this->expected = $expected;
     }
 
     /**
@@ -43,14 +46,22 @@ class AtCoderStream
     }
 
     /**
-     * @param string $expected
+     * @return string
+     * @throws Exception
      */
-    public function assert(string $expected): void
+    public function response(): string
     {
-        $actual = end($this->outputs);
+        $actual  = end($this->outputs);
+        $outputs = implode("\n", $this->outputs);
 
-        if ($actual != $expected) {
-            echo 'WA - actual: ' . $actual;
+        if (strlen($actual) > 1024) {
+            throw new AtCoderException("Output Limit Exceeded\noutputs:\n$outputs");
         }
+
+        if ($actual != $this->expected) {
+            throw new AtCoderException("Wrong Answer\nactual: $actual\nexpected: {$this->expected}\noutputs:\n$outputs");
+        }
+
+        return "Accepted\noutputs:\n$outputs";
     }
 }
