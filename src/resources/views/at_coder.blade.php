@@ -156,7 +156,7 @@
             overflow: hidden;
             text-indent: -9999em;
             transform: translateZ(0);
-            animation: loading-keyframes 1.7s infinite ease, rotate-keyframes 1.7s infinite ease;
+            animation: 1.7s ease infinite loading-keyframes, 1.7s ease infinite rotate-keyframes;
         }
         @keyframes loading-keyframes {
             0% {
@@ -188,36 +188,63 @@
                 transform: rotate(360deg);
             }
         }
+        .toast-box {
+            z-index: 101;
+            position: absolute;
+            right: 0;
+            bottom: 1px;
+            left: 0;
+            margin: auto;
+            width: calc(100% - 10em);
+            min-width: 50%;
+            overflow: hidden;
+        }
+        .toast {
+            box-sizing: border-box;
+            border: 1px solid #afa;
+            border-radius: 0.5em;
+            padding: 0.5em;
+            height: 2em;
+            color: #048;
+            background: #cfc;
+            overflow: hidden;
+            animation: 1s ease-out 4s 1 both fade-out;
+        }
+        @keyframes fade-out {
+            0% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+            }
+        }
     </style>
 </head>
 <body class="grid">
 <div class="grid-header">
     <div class="inline-box">
         <select id="codeList" title="codeList">
-            <option value="">(new)</option>
+            <option value=""></option>
+            <option value="(previous codes)" selected>(previous codes)</option>
+            <option value="(default codes)">(default codes)</option>
         </select>
-        <button type="button" id="openCodes">Open codes (⌘+O)</button>
+        <button type="button" id="openCodes">Open codes</button>
     </div>
     <div class="inline-box">
         <input type="text" id="codeName" title="code name" placeholder="code name">
         <button type="button" id="saveCodes">Save codes (⌘+S)</button>
+        <button type="button" id="deleteCodes">Delete codes</button>
     </div>
     <div class="inline-box"><button type="button" id="runTestCases">Run test cases (⌘+R)</button></div>
 </div>
 <div class="grid-main">
     <button type="button" class="float-button" id="copySubmitCode">Copy a submit code</button>
     <label class="box-label" for="mainEditor">Main Code</label>
-    <div class="box editor-box">
-        <textarea id="mainEditor">{{file_get_contents(resource_path('assets/php/main_editor.php'))}}</textarea>
-    </div>
+    <div class="box editor-box"><textarea id="mainEditor"></textarea></div>
     <label class="box-label" for="devEditor">Additional Code for Test</label>
-    <div class="box editor-box">
-        <textarea id="devEditor">{{file_get_contents(resource_path('assets/php/dev_editor.php'))}}</textarea>
-    </div>
+    <div class="box editor-box"><textarea id="devEditor"></textarea></div>
     <label class="box-label" for="prdEditor">Additional Code for Submit</label>
-    <div class="box editor-box">
-        <textarea id="prdEditor">{{file_get_contents(resource_path('assets/php/prd_editor.php'))}}</textarea>
-    </div>
+    <div class="box editor-box"><textarea id="prdEditor"></textarea></div>
     <label class="hidden-label" for="submitCode"><textarea class="result" id="submitCode" readonly></textarea></label>
 </div>
 <div id="testCaseBox" class="grid-sub">
@@ -232,19 +259,25 @@
         </div>
     </div>
     {{-- dummy --}}
-    <div style="display: none;" class="app-loading">
-        <div class="loading-filter"><div class="loading-position"><div class="loading-animation"></div></div></div>
-        <button class="float-button delete-button">−</button>
-        <label class="box-label app-close" for="testCaseEditor0">Test Case 0</label>
-        <div class="box editor-box">
-            <textarea id="testCaseEditor0" readonly></textarea>
+    <div style="display: none;">
+        {{-- Test Case 0 --}}
+        <div class="app-loading">
+            <div class="loading-filter"><div class="loading-position"><div class="loading-animation"></div></div></div>
+            <button class="float-button delete-button">−</button>
+            <label class="box-label app-close" for="testCaseEditor0">Test Case 0</label>
+            <div class="box editor-box">
+                <textarea id="testCaseEditor0" readonly></textarea>
+            </div>
+            <label class="box-label" for="result0">Test Result 0</label>
+            <div class="box">
+                <textarea class="result app-passed app-failed" id="result0" readonly></textarea>
+            </div>
         </div>
-        <label class="box-label" for="result0">Test Result 0</label>
-        <div class="box">
-            <textarea class="result app-passed app-failed" id="result0" readonly></textarea>
-        </div>
+        {{-- Toast --}}
+        <div class="toast"></div>
     </div>
 </div>
+<div class="toast-box"></div>
 <script src="{{url('/lib/codemirror/codemirror.js')}}"></script>
 <script src="{{url('/lib/codemirror/php.js')}}"></script>
 <script src="{{url('/lib/codemirror/clike.js')}}"></script>
@@ -269,10 +302,147 @@ function createEditor(id) {
     });
 }
 
-function submit() {
+function openCodes(silent) {
+    const codeName = document.getElementById("codeList").value;
+    if (codeName === "") {
+        document.getElementById("codeList").focus();
+
+        return;
+    }
+
+    const codes    = codeRepository.getCodes(codeName);
+
+    TestCase.dropAll();
+    document.querySelectorAll(".testCase").forEach(element => element.remove());
+
+    document.getElementById("codeName").value = codeName;
+    mainEditor.getDoc().setValue(codes.mainCode);
+    devEditor.getDoc().setValue(codes.devCode);
+    prdEditor.getDoc().setValue(codes.prdCode);
+
+    for (const code of codes.testCodes) {
+        TestCase.create(code);
+    }
+
+    if (!silent) {
+        Toast.create(`${codeName} loaded.`);
+    }
+}
+
+function hasChangedCodes(oldCodes) {
+    if (oldCodes === null) {
+        return true;
+    }
+
+    const newCodes = getEditorCodes();
+
+    return oldCodes.testCodes.length !== newCodes.testCodes.length
+        || oldCodes.mainCode !== newCodes.mainCode
+        || oldCodes.devCode !== newCodes.devCode
+        || oldCodes.prdCode !== newCodes.prdCode
+        || oldCodes.testCodes.some((code, index) => code !== newCodes.testCodes[index])
+        ;
+}
+
+function getEditorCodes() {
+    const testCodes = [];
+
+    for (const id in testCaseSet) {
+        testCodes.push(testCaseSet[id].getCode());
+    }
+
+    return {
+        mainCode: mainEditor.getDoc().getValue(),
+        devCode: devEditor.getDoc().getValue(),
+        prdCode: prdEditor.getDoc().getValue(),
+        testCodes: testCodes,
+    }
+}
+
+function saveCodes() {
+    const element  = document.getElementById("codeName");
+    const codeName = element.value;
+    const oldCodes = codeRepository.getCodes(codeName);
+
+    if (!hasChangedCodes(oldCodes)) {
+        Toast.create("not changed.");
+
+        return;
+    }
+
+    try {
+        codeRepository.saveCodes(codeName, getEditorCodes());
+    } catch (e) {
+        if (e && e instanceof ReservedError) {
+            element.value = "";
+            element.focus();
+
+            return;
+        }
+    }
+
+    if (oldCodes === null) {
+        addCodeName(codeName);
+    }
+    document.getElementById("codeList").value = codeName;
+
+    if (Math.max.apply(null, Object.keys(testCaseSet)) !== getEditorCodes().testCodes.length) {
+        setTimeout(() => openCodes(true), 1);
+    }
+
+    Toast.create("saved.");
+}
+
+function deleteCodes() {
+    const element  = document.getElementById("codeName");
+    const codeName = element.value;
+    const oldCodes = codeRepository.getCodes(codeName);
+    if (oldCodes === null) {
+        Toast.create("nothing to delete.");
+
+        return;
+    }
+
+    try {
+        codeRepository.deleteCodes(codeName);
+    } catch (e) {
+        Toast.create("cannot delete system data.");
+
+        return;
+    }
+
+    document.getElementById("codeList").value = "";
+
+    const options = document.getElementById("codeList").children;
+    Array.prototype.some.call(options, element => {
+        if (element.value !== codeName) {
+            return false;
+        }
+
+        element.remove();
+
+        return true;
+    });
+
+    element.value = "";
+    element.focus();
+
+    Toast.create("deleted.");
+}
+
+function addCodeName(codeName) {
+    const element = document.createElement("option");
+
+    element.value       = codeName;
+    element.textContent = codeName;
+
+    document.getElementById("codeList").appendChild(element);
+}
+
+function runTestCases() {
     const testCases = [];
-    const mainCode = mainEditor.doc.getValue();
-    const devCode = devEditor.doc.getValue();
+    const mainCode = mainEditor.getDoc().getValue();
+    const devCode = devEditor.getDoc().getValue();
     const bailOut = document.getElementById("bailOut").checked;
     const onlyFail = document.getElementById("onlyFail").checked;
     const timeLimit = +document.getElementById("timeLimit").value;
@@ -369,16 +539,17 @@ const resizeObserver = new ResizeObserver(entries => {
 const testCaseSet  = {};
 let lastTestCaseId = 0;
 class TestCase {
-    constructor() {
+    constructor(code) {
         const id      = ++lastTestCaseId;
         const element = document.createElement("div");
 
+        element.classList.add("testCase");
         element.insertAdjacentHTML("beforeend", `<hr>
 <div class="loading-filter"><div class="loading-position"><div class="loading-animation"></div></div></div>
 <button class="float-button delete-button">−</button>
 <label class="box-label" for="testCaseEditor${id}">Test Case ${id}</label>
 <div class="box editor-box">
-    <textarea id="testCaseEditor${id}" readonly>{{file_get_contents(resource_path('assets/php/case_editor.php'))}}</textarea>
+    <textarea id="testCaseEditor${id}" readonly></textarea>
 </div>
 <label class="box-label" for="result${id}">Test Result ${id}</label>
 <div class="box">
@@ -402,29 +573,41 @@ class TestCase {
             this.element.querySelectorAll(".box-label").forEach(element => element.classList.add("app-close"));
 
             this.element = null;
+
+            this.drop = null;
         };
 
         element.querySelector(".delete-button").addEventListener("click", drop, false);
         element.querySelectorAll(".box-label").forEach(
             element => element.addEventListener("click", event => event.target.classList.toggle("app-close"), false)
         );
+        document.getElementById(`testCaseEditor${id}`).value = code;
 
         this.id         = id;
         this.element    = element;
         this.editor     = createEditor(`testCaseEditor${id}`);
         this.passed     = false;
         this.testedCode = null;
+        this.drop       = drop;
 
         testCaseSet[id] = this;
         resizeObserver.observe(element.querySelector(".editor-box"));
     }
 
-    static create() {
-        return new TestCase();
+    static create(code) {
+        return new TestCase(code);
+    }
+
+    static dropAll() {
+        for (const id in testCaseSet) {
+            testCaseSet[id].drop();
+        }
+
+        lastTestCaseId = 0;
     }
 
     getCode() {
-        return this.editor.doc.getValue();
+        return this.editor.getDoc().getValue();
     }
 
     isPassed() {
@@ -454,10 +637,109 @@ class TestCase {
     }
 }
 
+class CodeRepository {
+    constructor() {
+        this.prefixKey    = "code_";
+        this.defaultName  = "(default codes)";
+        this.previousName = "(previous codes)";
+        this.testCode     = `{!!file_get_contents(resource_path('assets/php/default/test_case.php'))!!}`;
+        this.defaultCodes = {
+            mainCode: `{!!file_get_contents(resource_path('assets/php/default/main_code.php'))!!}`,
+            devCode: `{!!file_get_contents(resource_path('assets/php/default/additional_code_for_test.php'))!!}`,
+            prdCode: `{!!file_get_contents(resource_path('assets/php/default/additional_code_for_submit.php'))!!}`,
+            testCodes: [this.testCode],
+        };
+    }
+
+    getCodes(codeName) {
+        const json = localStorage.getItem(this.prefixKey + codeName);
+
+        if (json) {
+            return JSON.parse(json);
+        }
+
+        if (codeName === this.defaultName || codeName === this.previousName) {
+            return this.defaultCodes;
+        }
+
+        return null;
+    }
+
+    saveCodes(codeName, codes) {
+        if (codeName === "" || codeName === this.defaultName || codeName === this.previousName) {
+            throw new ReservedError(codeName);
+        }
+
+        localStorage.setItem(this.prefixKey + codeName, JSON.stringify(codes));
+    }
+
+    deleteCodes(codeName) {
+        if (codeName === this.defaultName || codeName === this.previousName) {
+            throw new ReservedError(codeName);
+        }
+
+        localStorage.removeItem(this.prefixKey + codeName);
+    }
+
+    savePreviousCodes(codes) {
+        localStorage.setItem(this.prefixKey + this.previousName, JSON.stringify(codes));
+    }
+
+    getDefaultTestCode() {
+        return this.testCode;
+    }
+
+    getCodeNames() {
+        const codeNames = [];
+
+        for (let i = 0, j = localStorage.length; i < j; ++i) {
+            const key = localStorage.key(i);
+            if (!key.startsWith(this.prefixKey)) {
+                continue;
+            }
+
+            const codeName = key.slice(this.prefixKey.length);
+            if (codeName === this.previousName) {
+                continue;
+            }
+
+            codeNames.push(codeName);
+        }
+
+        return codeNames;
+    }
+}
+
+class ReservedError extends Error {
+}
+
+class Toast {
+    constructor(message) {
+        const element = document.createElement("div");
+        const drop    = () => {
+            clearTimeout(timeoutId);
+
+            element.removeEventListener("click", drop, false);
+            element.remove();
+        };
+        const timeoutId = setTimeout(drop, 5000);
+
+        element.classList.add("toast");
+        element.textContent = message;
+        document.querySelector(".toast-box").appendChild(element);
+        element.addEventListener("click", drop, false);
+    }
+
+    static create(message) {
+        return new Toast(message);
+    }
+}
+
 // initialize
-const mainEditor = createEditor("mainEditor");
-const devEditor  = createEditor("devEditor");
-const prdEditor  = createEditor("prdEditor");
+const codeRepository = new CodeRepository();
+const mainEditor     = createEditor("mainEditor");
+const devEditor      = createEditor("devEditor");
+const prdEditor      = createEditor("prdEditor");
 
 document.querySelectorAll(".box-label").forEach(
     element => element.addEventListener("click", event => event.target.classList.toggle("app-close"), false)
@@ -467,26 +749,28 @@ document.querySelectorAll(".editor-box").forEach(
     element => resizeObserver.observe(element)
 );
 
-document.getElementById("addTestCase").addEventListener("click", TestCase.create, false);
-
-document.getElementById("runTestCases").addEventListener("click", submit, false);
+document.getElementById("openCodes").addEventListener("click", openCodes, false);
+document.getElementById("saveCodes").addEventListener("click", saveCodes, false);
+document.getElementById("deleteCodes").addEventListener("click", deleteCodes, false);
+document.getElementById("runTestCases").addEventListener("click", runTestCases, false);
 
 document.getElementById("copySubmitCode").addEventListener("click", () => {
-    document.getElementById("submitCode").value = prdEditor.doc.getValue() + mainEditor.doc.getValue().slice(5);
+    document.getElementById("submitCode").value = prdEditor.getDoc().getValue() + mainEditor.getDoc().getValue().slice(5);
     document.getElementById("submitCode").select();
     document.execCommand("copy");
 }, false);
+
+document.getElementById("addTestCase").addEventListener("click", () => TestCase.create(codeRepository.getDefaultTestCode()), false);
 
 document.addEventListener("keydown", event => {
     if (event.metaKey || event.ctrlKey) {
         switch (event.keyCode) {
             case 82: // R
-                submit();
+                runTestCases();
 
                 break;
             case 83: // S
-                // save();
-                console.log("save");
+                saveCodes();
 
                 break;
             default:
@@ -501,15 +785,11 @@ document.addEventListener("keydown", event => {
     }
 }, false);
 
-window.addEventListener("beforeunload", event => {
-    event.returnValue = "";
-}, false);
+window.addEventListener("beforeunload", () => codeRepository.savePreviousCodes(getEditorCodes()), false);
 
-TestCase.create();
+codeRepository.getCodeNames().forEach(addCodeName);
+openCodes();
 
 </script>
 </body>
 </html>
-{{--
-TODO: save & load codes
---}}
